@@ -1153,7 +1153,7 @@ export default {
         a => a.id === this.linkedAssetId
       )
       if (!selectedAsset) return [{ label: 'None', value: null }]
-      
+
       const taskTypeIds = new Set(selectedAsset.tasks.map(t => t.task_type_id))
       const options = Array.from(taskTypeIds).map(id => {
         const type = this.$store.getters.taskTypeMap.get(id)
@@ -1535,9 +1535,14 @@ export default {
 
       if (window.electronAPI && window.electronAPI.linkAssetTask) {
         try {
-          const promises = Array.from(this.selectedAssets.values()).map(asset => {
-             return window.electronAPI.linkAssetTask({ assetId: asset.id, taskId })
-          })
+          const promises = Array.from(this.selectedAssets.values()).map(
+            asset => {
+              return window.electronAPI.linkAssetTask({
+                assetId: asset.id,
+                taskId
+              })
+            }
+          )
           await Promise.all(promises)
           this.selectBar('')
           this.clearSelectedAssets()

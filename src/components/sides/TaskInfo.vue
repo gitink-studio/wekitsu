@@ -122,16 +122,30 @@
                 v-model="searchLinkedAssetQuery"
                 :placeholder="$t('main.search') || 'Search...'"
               />
-              
-              <table class="datatable is-fullwidth" v-if="filteredLinkedAssets.length > 0">
+
+              <table
+                class="datatable is-fullwidth"
+                v-if="filteredLinkedAssets.length > 0"
+              >
                 <thead class="datatable-head">
                   <tr>
-                    <th class="datatable-row-header">{{ $t('tasks.fields.name') || 'Name' }}</th>
-                    <th class="has-text-centered datatable-row-header" style="width: 60px">{{ $t('tasks.fields.actions') || 'Actions' }}</th>
+                    <th class="datatable-row-header">
+                      {{ $t('tasks.fields.name') || 'Name' }}
+                    </th>
+                    <th
+                      class="has-text-centered datatable-row-header"
+                      style="width: 60px"
+                    >
+                      {{ $t('tasks.fields.actions') || 'Actions' }}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr class="datatable-row" v-for="link in filteredLinkedAssets" :key="link.assetId">
+                  <tr
+                    class="datatable-row"
+                    v-for="link in filteredLinkedAssets"
+                    :key="link.assetId"
+                  >
                     <td>
                       <router-link
                         :to="`/productions/${currentProductionId}/assets/${link.assetId}`"
@@ -396,7 +410,9 @@
         </div>
 
         <div class="linked-assets-section mt2">
-          <h2 class="title" style="font-size: 1.1em; margin-bottom: 0.5em;">Bulk Link Assets</h2>
+          <h2 class="title" style="font-size: 1.1em; margin-bottom: 0.5em">
+            Bulk Link Assets
+          </h2>
           <div class="flexcolumn">
             <combobox-searchable
               class="mb1"
@@ -417,7 +433,11 @@
               :options="linkedTaskTypeOptions"
               v-model="linkedTaskTypeId"
             />
-            <button class="button is-primary" @click="bulkLinkAssets" :disabled="!linkedTaskTypeId">
+            <button
+              class="button is-primary"
+              @click="bulkLinkAssets"
+              :disabled="!linkedTaskTypeId"
+            >
               Bulk Link Assets
             </button>
           </div>
@@ -684,8 +704,8 @@ export default {
     filteredLinkedAssets() {
       if (!this.searchLinkedAssetQuery) return this.linkedAssets
       const query = this.searchLinkedAssetQuery.toLowerCase()
-      return this.linkedAssets.filter(
-        link => (link.assetName || '').toLowerCase().includes(query)
+      return this.linkedAssets.filter(link =>
+        (link.assetName || '').toLowerCase().includes(query)
       )
     },
 
@@ -995,7 +1015,8 @@ export default {
       const selectedAsset = this.linkedAssetsList.find(
         a => a.id === this.linkedAssetId
       )
-      if (!selectedAsset || !selectedAsset.tasks) return [{ label: 'None', value: null }]
+      if (!selectedAsset || !selectedAsset.tasks)
+        return [{ label: 'None', value: null }]
 
       const taskTypeIds = new Set(selectedAsset.tasks.map(t => t.task_type_id))
       const options = Array.from(taskTypeIds).map(id => {
@@ -1099,10 +1120,14 @@ export default {
         return
       }
 
-      const selectedAsset = this.linkedAssetsList.find(a => a.id === this.linkedAssetId)
+      const selectedAsset = this.linkedAssetsList.find(
+        a => a.id === this.linkedAssetId
+      )
       if (!selectedAsset) return
-      
-      const task = selectedAsset.tasks.find(t => t.task_type_id === this.linkedTaskTypeId)
+
+      const task = selectedAsset.tasks.find(
+        t => t.task_type_id === this.linkedTaskTypeId
+      )
       if (!task) return
 
       const targetTaskId = task.id
@@ -1110,10 +1135,13 @@ export default {
       let failCount = 0
 
       const entitiesToLink = Array.from(this.selectedEntities.values())
-      
+
       for (const entity of entitiesToLink) {
         try {
-          const res = await window.electronAPI.linkAssetTask({ assetId: entity.id, taskId: targetTaskId })
+          const res = await window.electronAPI.linkAssetTask({
+            assetId: entity.id,
+            taskId: targetTaskId
+          })
           if (res.success) {
             successCount++
           } else {
@@ -1128,7 +1156,9 @@ export default {
       if (failCount === 0) {
         alert(`Successfully linked ${successCount} assets.`)
       } else {
-        alert(`Linked ${successCount} assets, but failed to link ${failCount} assets.`)
+        alert(
+          `Linked ${successCount} assets, but failed to link ${failCount} assets.`
+        )
       }
     },
 
