@@ -103,7 +103,7 @@
             class="linked-assets-section mt1"
             v-if="linkedAssets && linkedAssets.length > 0"
           >
-            <div class="flexrow">
+            <div class="flexrow mb1">
               <span
                 class="flexrow-item ml1"
                 style="
@@ -115,38 +115,45 @@
                 {{ $t('tasks.fields.linked_assets') || 'Linked Assets' }}
               </span>
             </div>
-            <div class="pa1 pt0 flexrow" style="gap: 8px; flex-wrap: wrap">
-              <template v-for="link in linkedAssets" :key="link.id">
-                <div
-                  v-if="link.assetId"
-                  style="display: flex; align-items: center"
-                >
-                  <router-link
-                    :to="`/productions/${currentProductionId}/assets/${link.assetId}`"
-                    class="button is-small is-outlined"
-                    style="
-                      border-top-right-radius: 0;
-                      border-bottom-right-radius: 0;
-                      border-right: none;
-                    "
-                  >
-                    <kitsu-icon name="asset" class="mr1" />
-                    {{ link.assetName || 'View Linked Asset' }}
-                  </router-link>
-                  <button
-                    class="button is-small is-outlined is-danger"
-                    style="
-                      border-top-left-radius: 0;
-                      border-bottom-left-radius: 0;
-                      padding: 0 8px;
-                    "
-                    title="Delete Link"
-                    @click="deleteLinkedAsset(link.assetId)"
-                  >
-                    <x-icon size="14" />
-                  </button>
-                </div>
-              </template>
+            <div class="pa1 pt0">
+              <input
+                type="text"
+                class="input mb1"
+                v-model="searchLinkedAssetQuery"
+                :placeholder="$t('main.search') || 'Search...'"
+              />
+              
+              <table class="datatable is-fullwidth" v-if="filteredLinkedAssets.length > 0">
+                <thead class="datatable-head">
+                  <tr>
+                    <th class="datatable-row-header">{{ $t('tasks.fields.name') || 'Name' }}</th>
+                    <th class="has-text-centered datatable-row-header" style="width: 60px">{{ $t('tasks.fields.actions') || 'Actions' }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr class="datatable-row" v-for="link in filteredLinkedAssets" :key="link.assetId">
+                    <td>
+                      <router-link
+                        :to="`/productions/${currentProductionId}/assets/${link.assetId}`"
+                      >
+                        {{ link.assetName || 'View Linked Asset' }}
+                      </router-link>
+                    </td>
+                    <td class="has-text-centered">
+                      <button
+                        class="button is-small is-outlined is-danger"
+                        title="Delete Link"
+                        @click="deleteLinkedAsset(link.assetId)"
+                      >
+                        <x-icon size="14" />
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div v-else class="has-text-centered mt1">
+                <em>{{ $t('main.no_results') || 'No results found' }}</em>
+              </div>
             </div>
           </div>
         </div>
@@ -545,6 +552,7 @@ export default {
       isWide: false,
       isExtraWide: false,
       linkedAssets: [],
+      searchLinkedAssetQuery: '',
       linkedAssetsLoading: false,
       otherPreviews: [],
       panelWidth: 800,
@@ -635,6 +643,14 @@ export default {
       'taskTypeMap',
       'user'
     ]),
+
+    filteredLinkedAssets() {
+      if (!this.searchLinkedAssetQuery) return this.linkedAssets
+      const query = this.searchLinkedAssetQuery.toLowerCase()
+      return this.linkedAssets.filter(
+        link => (link.assetName || '').toLowerCase().includes(query)
+      )
+    },
 
     sideColumnParent() {
       if (this.$el.parentElement.classList.contains('side-column')) {
