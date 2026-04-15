@@ -394,6 +394,34 @@
             }}</span>
           </div>
         </div>
+
+        <div class="linked-assets-section mt2">
+          <h2 class="title" style="font-size: 1.1em; margin-bottom: 0.5em;">Bulk Link Assets</h2>
+          <div class="flexcolumn">
+            <combobox-searchable
+              class="mb1"
+              label="Linked Production"
+              :options="linkedProductionOptions"
+              v-model="linkedProductionId"
+            />
+            <combobox-searchable
+              class="mb1"
+              label="Linked Asset"
+              :options="linkedAssetOptions"
+              v-model="linkedAssetId"
+              :is-loading="isLoadingLinkedAssets"
+            />
+            <combobox-searchable
+              class="mb2"
+              label="Linked Task Type"
+              :options="linkedTaskTypeOptions"
+              v-model="linkedTaskTypeId"
+            />
+            <button class="button is-primary" @click="bulkLinkAssets" :disabled="!linkedTaskTypeId">
+              Bulk Link Assets
+            </button>
+          </div>
+        </div>
       </div>
 
       <div class="side task-info empty" v-else>
@@ -431,6 +459,7 @@ import { getTaskTypeStyle } from '@/lib/render'
 import { sortPeople, sortTaskNames } from '@/lib/sorting'
 import stringHelpers from '@/lib/string'
 import { formatFrame } from '@/lib/video'
+import assetsApi from '@/store/api/assets'
 
 import { domMixin } from '@/components/mixins/dom'
 import { taskMixin } from '@/components/mixins/task'
@@ -440,6 +469,7 @@ import ActionPanel from '@/components/tops/ActionPanel.vue'
 import AddComment from '@/components/widgets/AddComment.vue'
 import AddPreviewModal from '@/components/modals/AddPreviewModal.vue'
 import Comment from '@/components/widgets/Comment.vue'
+import ComboboxSearchable from '@/components/widgets/ComboboxSearchable.vue'
 import ComboboxStyled from '@/components/widgets/ComboboxStyled.vue'
 import DeleteModal from '@/components/modals/DeleteModal.vue'
 import EditCommentModal from '@/components/modals/EditCommentModal.vue'
@@ -461,6 +491,7 @@ export default {
     ActionPanel,
     AddComment,
     AddPreviewModal,
+    ComboboxSearchable,
     ComboboxStyled,
     Comment,
     CornerRightUpIcon,
@@ -554,6 +585,11 @@ export default {
       linkedAssets: [],
       searchLinkedAssetQuery: '',
       linkedAssetsLoading: false,
+      linkedProductionId: null,
+      linkedAssetId: null,
+      linkedTaskTypeId: null,
+      linkedAssetsList: [],
+      isLoadingLinkedAssets: false,
       otherPreviews: [],
       panelWidth: 800,
       selectedEpisodes: null,
@@ -629,6 +665,7 @@ export default {
       'isSingleEpisode',
       'isTVShow',
       'nbSelectedTasks',
+      'openProductions',
       'personMap',
       'productionMap',
       'selectedAssets',
@@ -933,6 +970,43 @@ export default {
         Array.from(this.selectedTasks.values()),
         this.taskTypeMap
       )
+    },
+
+    linkedProductionOptions() {
+      const options = this.openProductions.map(prod => ({
+        label: prod.name,
+        value: prod.id
+      }))
+      options.unshift({ label: 'None', value: null })
+      return options
+    },
+
+    linkedAssetOptions() {
+      const options = this.linkedAssetsList.map(asset => ({
+        label: asset.name,
+        value: asset.id
+      }))
+      options.unshift({ label: 'None', value: null })
+      return options
+    },
+
+    linkedTaskTypeOptions() {
+      if (!this.linkedAssetId) return [{ label: 'None', value: null }]
+      const selectedAsset = this.linkedAssetsList.find(
+        a => a.id === this.linkedAssetId
+      )
+      if (!selectedAsset || !selectedAsset.tasks) return [{ label: 'None', value: null }]
+
+      const taskTypeIds = new Set(selectedAsset.tasks.map(t => t.task_type_id))
+      const options = Array.from(taskTypeIds).map(id => {
+        const type = this.$store.getters.taskTypeMap.get(id)
+        return {
+          label: type ? type.name : id,
+          value: id
+        }
+      })
+      options.unshift({ label: 'None', value: null })
+      return options
     }
   },
 
@@ -1016,6 +1090,45 @@ export default {
         } finally {
           this.linkedAssetsLoading = false
         }
+      }
+    },
+
+    async bulkLinkAssets() {
+      if (!this.linkedAssetId || !this.linkedTaskTypeId) {
+        alert('Please select both a Linked Asset and a Linked Task Type.')
+        return
+      }
+
+      const selectedAsset = this.linkedAssetsList.find(a => a.id === this.linkedAssetId)
+      if (!selectedAsset) return
+      
+      const task = selectedAsset.tasks.find(t => t.task_type_id === this.linkedTaskTypeId)
+      if (!task) return
+
+      const targetTaskId = task.id
+      let successCount = 0
+      let failCount = 0
+
+      const entitiesToLink = Array.from(this.selectedEntities.values())
+      
+      for (const entity of entitiesToLink) {
+        try {
+          const res = await window.electronAPI.linkAssetTask({ assetId: entity.id, taskId: targetTaskId })
+          if (res.success) {
+            successCount++
+          } else {
+            failCount++
+          }
+        } catch (err) {
+          console.error('Failed to link asset for entity', entity.id, err)
+          failCount++
+        }
+      }
+
+      if (failCount === 0) {
+        alert(`Successfully linked ${successCount} assets.`)
+      } else {
+        alert(`Linked ${successCount} assets, but failed to link ${failCount} assets.`)
       }
     },
 
@@ -1602,6 +1715,32 @@ export default {
 
     currentFrame() {
       this.currentFrameRaw = this.currentFrame
+    },
+
+    async linkedProductionId() {
+      this.linkedAssetId = null
+      this.linkedTaskTypeId = null
+      this.linkedAssetsList = []
+      if (!this.linkedProductionId) return
+
+      this.isLoadingLinkedAssets = true
+      try {
+        const prod = this.openProductions.find(
+          p => p.id === this.linkedProductionId
+        )
+        if (prod) {
+          const assets = await assetsApi.getAssets(prod, null, true)
+          this.linkedAssetsList = assets
+        }
+      } catch (err) {
+        console.error('Failed to load assets for linked production', err)
+      } finally {
+        this.isLoadingLinkedAssets = false
+      }
+    },
+
+    linkedAssetId() {
+      this.linkedTaskTypeId = null
     }
   },
 

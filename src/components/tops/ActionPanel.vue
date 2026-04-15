@@ -252,6 +252,18 @@
         <div
           class="menu-item"
           :class="{
+            active: selectedBar === 'link-assets'
+          }"
+          title="Bulk Link Assets"
+          @click="selectBar('link-assets')"
+          v-if="isCurrentViewAsset && isCurrentUserManager && !isTaskSelection"
+        >
+          <link-icon title="Bulk Link Assets" />
+        </div>
+
+        <div
+          class="menu-item"
+          :class="{
             active: selectedBar === 'delete-shots'
           }"
           :title="$t('menu.delete_shots')"
@@ -698,6 +710,46 @@
           />
         </div>
 
+        <div
+          class="flexcolumn is-wide pa1"
+          v-if="selectedBar === 'link-assets'"
+        >
+          <div class="flexrow">
+            <combobox-searchable
+              class="flexrow-item is-wide"
+              label="Linked Production"
+              :options="linkedProductionOptions"
+              v-model="linkedProductionId"
+            />
+            <combobox-searchable
+              class="flexrow-item is-wide"
+              label="Linked Asset"
+              :options="linkedAssetOptions"
+              v-model="linkedAssetId"
+              :is-loading="loading.linkAssets"
+            />
+            <combobox-searchable
+              class="flexrow-item is-wide"
+              label="Linked Task Type"
+              :options="linkedTaskTypeOptions"
+              v-model="linkedTaskTypeId"
+            />
+          </div>
+          <div class="flexrow mt1">
+            <button
+              class="button confirm-button is-wide"
+              :class="{ 'is-loading': loading.linkAssets }"
+              :disabled="!linkedTaskTypeId"
+              @click="confirmLinkAssets"
+            >
+              Link {{ nbSelectedAssets }} Assets
+            </button>
+          </div>
+          <div v-if="errors.linkAssets" class="has-text-danger mt1">
+            Failed to link assets.
+          </div>
+        </div>
+
         <div class="flexrow-item is-wide" v-if="selectedBar === 'delete-shots'">
           <delete-entities
             :error-text="$t('shots.multiple_delete_error')"
@@ -855,6 +907,7 @@ import func from '@/lib/func'
 import BuildFilterModal from '@/components/modals/BuildFilterModal.vue'
 import ButtonSimple from '@/components/widgets/ButtonSimple.vue'
 import ComboboxModel from '@/components/widgets/ComboboxModel.vue'
+import ComboboxSearchable from '@/components/widgets/ComboboxSearchable.vue'
 import ComboboxStatus from '@/components/widgets/ComboboxStatus.vue'
 import ComboboxStyled from '@/components/widgets/ComboboxStyled.vue'
 import DeleteEntities from '@/components/tops/actions/DeleteEntities.vue'
@@ -863,6 +916,8 @@ import PeopleField from '@/components/widgets/PeopleField.vue'
 import SearchField from '@/components/widgets/SearchField.vue'
 import Spinner from '@/components/widgets/Spinner.vue'
 import ViewPlaylistModal from '@/components/modals/ViewPlaylistModal.vue'
+
+import assetsApi from '@/store/api/assets'
 
 export default {
   name: 'action-panel',
@@ -891,6 +946,7 @@ export default {
     ButtonSimple,
     CheckSquareIcon,
     ComboboxModel,
+    ComboboxSearchable,
     ComboboxStatus,
     ComboboxStyled,
     DeleteEntities,
@@ -917,6 +973,10 @@ export default {
       selectedBar: '',
       taskStatusId: '',
       statusComment: '',
+      linkedProductionId: null,
+      linkedAssetId: null,
+      linkedTaskTypeId: null,
+      linkedAssetsList: [],
       modals: {
         buildFilter: false,
         playlist: false
@@ -952,7 +1012,8 @@ export default {
         setThumbnails: false,
         shotDeletion: false,
         links: false,
-        tasksSubscription: false
+        tasksSubscription: false,
+        linkAssets: false
       },
       errors: {
         assetDeletion: false,
@@ -961,7 +1022,8 @@ export default {
         conceptDeletion: false,
         editDeletion: false,
         episodeDeletion: false,
-        shotDeletion: false
+        shotDeletion: false,
+        linkAssets: false
       }
     }
   },
@@ -978,6 +1040,7 @@ export default {
     ...mapGetters([
       'assetsByType',
       'currentProduction',
+      'openProductions',
       'getCustomActionsByType',
       'isCurrentUserArtist',
       'isCurrentUserClient',
@@ -1064,6 +1127,43 @@ export default {
         this.selectedShots.size > 0 ||
         this.selectedEdits.size > 0
       )
+    },
+
+    linkedProductionOptions() {
+      const options = this.openProductions.map(prod => ({
+        label: prod.name,
+        value: prod.id
+      }))
+      options.unshift({ label: 'None', value: null })
+      return options
+    },
+
+    linkedAssetOptions() {
+      const options = this.linkedAssetsList.map(asset => ({
+        label: asset.name,
+        value: asset.id
+      }))
+      options.unshift({ label: 'None', value: null })
+      return options
+    },
+
+    linkedTaskTypeOptions() {
+      if (!this.linkedAssetId) return [{ label: 'None', value: null }]
+      const selectedAsset = this.linkedAssetsList.find(
+        a => a.id === this.linkedAssetId
+      )
+      if (!selectedAsset) return [{ label: 'None', value: null }]
+      
+      const taskTypeIds = new Set(selectedAsset.tasks.map(t => t.task_type_id))
+      const options = Array.from(taskTypeIds).map(id => {
+        const type = this.$store.getters.taskTypeMap.get(id)
+        return {
+          label: type ? type.name : id,
+          value: id
+        }
+      })
+      options.unshift({ label: 'None', value: null })
+      return options
     },
 
     nbSelectedAssets() {
@@ -1414,6 +1514,44 @@ export default {
         })
     },
 
+    getLinkedTaskId() {
+      if (!this.linkedTaskTypeId || !this.linkedAssetId) return null
+      const selectedAsset = this.linkedAssetsList.find(
+        a => a.id === this.linkedAssetId
+      )
+      if (!selectedAsset) return null
+      const task = selectedAsset.tasks.find(
+        t => t.task_type_id === this.linkedTaskTypeId
+      )
+      return task ? task.id : null
+    },
+
+    async confirmLinkAssets() {
+      const taskId = this.getLinkedTaskId()
+      if (!taskId) return
+
+      this.loading.linkAssets = true
+      this.errors.linkAssets = false
+
+      if (window.electronAPI && window.electronAPI.linkAssetTask) {
+        try {
+          const promises = Array.from(this.selectedAssets.values()).map(asset => {
+             return window.electronAPI.linkAssetTask({ assetId: asset.id, taskId })
+          })
+          await Promise.all(promises)
+          this.selectBar('')
+          this.clearSelectedAssets()
+        } catch (err) {
+          console.error(err)
+          this.errors.linkAssets = true
+        } finally {
+          this.loading.linkAssets = false
+        }
+      } else {
+        this.loading.linkAssets = false
+      }
+    },
+
     confirmAssetDeletion() {
       this.loading.deleteAsset = true
       this.errors.deleteAsset = false
@@ -1743,6 +1881,32 @@ export default {
           }
         }
       }
+    },
+
+    async linkedProductionId() {
+      this.linkedAssetId = null
+      this.linkedTaskTypeId = null
+      this.linkedAssetsList = []
+      if (!this.linkedProductionId) return
+
+      this.loading.linkAssets = true
+      try {
+        const prod = this.openProductions.find(
+          p => p.id === this.linkedProductionId
+        )
+        if (prod) {
+          const assets = await assetsApi.getAssets(prod, null, true)
+          this.linkedAssetsList = assets
+        }
+      } catch (err) {
+        console.error('Failed to load assets for linked production', err)
+      } finally {
+        this.loading.linkAssets = false
+      }
+    },
+
+    linkedAssetId() {
+      this.linkedTaskTypeId = null
     },
 
     $route(oldRoute, newRoute) {
